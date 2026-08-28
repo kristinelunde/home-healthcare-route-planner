@@ -44,6 +44,34 @@ requirements, workload balance, and visits requiring multiple employees.
 
 No database or web framework is used in the current prototype.
 
+## Screenshots
+
+### Managing visits
+
+![Route planner interface](images/image1.png)
+
+The selected visit round shows active employees and all visits. Individual
+visits can be edited or temporarily excluded before route planning.
+
+### Adding a visit
+
+![Form for adding a visit](images/image2.png)
+
+New visits can be added with an address, duration, qualification requirement,
+staffing requirement, and an optional critical time window.
+
+### Optimized routes
+
+![Optimized employee routes](images/image3.png)
+
+The result displays each employee's assigned visits, arrival times, driving
+times, qualification level, and return time to the depot.
+
+Screenshots must only contain fictional demonstration data. Do not include API
+keys, real patient information, real employee schedules, or other sensitive
+information. Public addresses may be used for route demonstrations, but they
+must not be presented as belonging to real home healthcare patients.
+
 ## Installation
 
 ### 1. Clone the repository
