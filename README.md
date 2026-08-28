@@ -7,8 +7,7 @@ The application uses real driving times from OpenRouteService and Google
 OR-Tools to create routes while considering staff qualifications, visit time
 requirements, workload balance, and visits requiring multiple employees.
 
-> **Important:** This is a learning and portfolio project. All included users, employees, addresses,
-> and schedules are fictional test data.
+> **Important:** This is a learning and portfolio project. All included users, employees, and schedules are fictional. Public real-world addresses are used solely to demonstrate route calculations and are not associated with real patients.
 
 ## Features
 
@@ -77,8 +76,8 @@ must not be presented as belonging to real home healthcare patients.
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
-cd <home-healthcare-route-planner>
+git clone https://github.com/kristinelunde/home-healthcare-route-planner.git
+cd home-healthcare-route-planner
 ```
 
 ### 2. Create and activate a virtual environment
