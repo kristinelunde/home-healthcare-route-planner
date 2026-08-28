@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ruteplanlegger</title>
+  <style>
+    :root { color-scheme: light; --blue:#175cd3; --ink:#172b4d; --line:#d0d5dd; }
+    * { box-sizing: border-box; }
+    [hidden] { display:none !important; }
+    body { margin:0; background:#f5f7fa; color:var(--ink); font:15px system-ui,sans-serif; }
+    main { max-width:1100px; margin:32px auto; padding:0 20px 48px; }
+    h1 { margin:0 0 22px; font-size:28px; }
+    h2 { margin:0 0 14px; font-size:18px; }
+    .card { background:white; border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; box-shadow:0 2px 8px #1018280a; }
+    .controls { display:flex; gap:12px; align-items:end; flex-wrap:wrap; }
+    label { display:grid; gap:6px; font-weight:600; }
+    select,button { font:inherit; border-radius:7px; padding:9px 12px; }
+    input[type="number"],input[type="time"] { width:82px; padding:7px; border:1px solid #98a2b3; border-radius:7px; font:inherit; }
+    select { min-width:240px; border:1px solid #98a2b3; background:white; }
+    .editor-select { min-width:165px; padding:7px; }
+    button { border:0; background:var(--blue); color:white; font-weight:700; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:wait; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { padding:10px; text-align:left; border-bottom:1px solid #eaecf0; }
+    th { color:#475467; font-size:13px; }
+    tr.excluded { opacity:.42; background:#f2f4f7; }
+    tr.excluded td:first-child { text-decoration:line-through; }
+    .task-button { background:#475467; padding:7px 10px; font-weight:600; }
+    .task-actions { display:flex; gap:6px; }
+    .critical-editor { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
+    .add-form { display:grid; grid-template-columns:repeat(3,minmax(160px,1fr)); gap:12px; margin-top:16px; padding:16px; border:1px solid var(--line); border-radius:9px; background:#f9fafb; }
+    .add-form input,.add-form select { width:100%; min-width:0; padding:8px; border:1px solid #98a2b3; border-radius:7px; font:inherit; }
+    .add-form .wide { grid-column:span 2; }
+    .add-form .form-actions { grid-column:1/-1; display:flex; gap:8px; }
+    .secondary { background:#475467; }
+    .staff { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+    .pill { background:#eef4ff; border-radius:999px; padding:6px 10px; }
+    .routes { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:14px; }
+    .route { border:1px solid var(--line); border-radius:10px; padding:16px; }
+    .stop { border-left:3px solid #84adff; padding:2px 0 2px 12px; margin:14px 0; }
+    .stop p,.route p { margin:5px 0; }
+    .late { color:#b42318; font-weight:750; }
+    .muted { color:#667085; }
+    .error { color:#b42318; background:#fef3f2; padding:12px; border-radius:8px; }
+    @media (max-width:700px) { .table-wrap { overflow-x:auto; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Ruteplanlegger</h1>
+  <section class="card">
+    <div class="controls">
+      <label>Besøksrunde <select id="round"></select></label>
+      <button id="plan">Planlegg ruter</button>
+    </div>
+    <div id="staff" class="staff"></div>
+  </section>
+  <section class="card">
+    <h2 id="tasks-title">Oppdrag</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Bruker</th><th>Adresse</th><th>Varighet</th><th>Kompetanse</th><th>Ansatte</th><th>Kritisk tid</th><th></th></tr></thead>
+      <tbody id="tasks"></tbody>
+    </table></div>
+    <button id="show-add" type="button" style="margin-top:14px">Legg til oppdrag</button>
+    <form id="add-form" class="add-form" hidden>
+      <label>Bruker/navn <input id="new-name" required></label>
+      <label class="wide">Adresse <input id="new-address" required></label>
+      <label>Varighet i minutter <input id="new-duration" type="number" min="1" step="1" value="30" required></label>
+      <label>Kompetanse <select id="new-qualification"><option value="UTEN_HELSEFAGLIG_UTDANNING">Kan tas av alle</option><option value="KVALIFISERT">Kvalifisert</option></select></label>
+      <label>Antall ansatte <input id="new-staffing" type="number" min="1" step="1" value="1" required></label>
+      <label><span>Kritisk tid</span><span><input id="new-critical" type="checkbox"> Bruk kritisk tidsvindu</span></label>
+      <label class="critical-new" hidden>Kritisk start <input id="new-critical-start" type="time"></label>
+      <label class="critical-new" hidden>Kritisk slutt <input id="new-critical-end" type="time"></label>
+      <div class="form-actions"><button type="submit">Legg til</button><button id="cancel-add" class="secondary" type="button">Avbryt</button></div>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Planlagte ruter</h2>
+    <div id="result" class="muted">Velg en besøksrunde og trykk «Planlegg ruter».</div>
+  </section>
+</main>
+<script>
+let data, taskState={};
+const roundSelect=document.querySelector('#round'), tasks=document.querySelector('#tasks');
+const staff=document.querySelector('#staff'), result=document.querySelector('#result');
+const button=document.querySelector('#plan'), tasksTitle=document.querySelector('#tasks-title');
+const addButton=document.querySelector('#show-add'), addForm=document.querySelector('#add-form');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function load(){
+  data=await (await fetch('/api/data')).json();
+  data.runder.forEach(r=>taskState[r.id]=Object.fromEntries(r.oppdrag.map(o=>[o.id,{
+    ...o,
+    aktiv:true,
+    redigerer:false,
+    varighet:o.varighet,
+    kvalifikasjon:o.kvalifikasjon_id,
+    antallAnsatte:o.antall_ansatte,
+    kritiskAktiv:o.kritisk_start!==null,
+    kritiskStart:o.kritisk_start??timeToMinutes(r.start),
+    kritiskSlutt:o.kritisk_slutt??timeToMinutes(r.slutt)
+  }])));
+  roundSelect.innerHTML=data.runder.map(r=>`<option value="${r.id}">${esc(r.navn)} (${r.start}–${r.slutt})</option>`).join('');
+  showRound();
+}
+function current(){ return data.runder.find(r=>r.id===roundSelect.value); }
+function timeToMinutes(value){const [hours,minutes]=value.split(':').map(Number);return hours*60+minutes;}
+function minutesToTime(value){return `${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`;}
+function qualificationText(value){return value==='KVALIFISERT'?'Kvalifisert helsepersonell':'Uten helsefaglig utdanning';}
+function criticalText(s){return s.kritiskAktiv?`${minutesToTime(s.kritiskStart)}–${minutesToTime(s.kritiskSlutt)}`:'–';}
+function showRound(){
+  const r=current();
+  const state=taskState[r.id];
+  tasksTitle.textContent=`Oppdrag – ${r.navn}`;
+  staff.innerHTML=r.ansatte.map(a=>`<span class="pill">${esc(a.navn)} · ${esc(a.kvalifikasjon)}</span>`).join('');
+  tasks.innerHTML=Object.values(state).map(s=>{
+    const o=s;
+    const duration=s.redigerer?`<input type="number" min="1" step="1" value="${s.varighet}" onchange="setNumber('${o.id}','varighet',this.value)"> min`:`${s.varighet} min`;
+    const qualification=s.redigerer?`<select class="editor-select" onchange="setValue('${o.id}','kvalifikasjon',this.value)"><option value="UTEN_HELSEFAGLIG_UTDANNING" ${s.kvalifikasjon==='UTEN_HELSEFAGLIG_UTDANNING'?'selected':''}>Kan tas av alle</option><option value="KVALIFISERT" ${s.kvalifikasjon==='KVALIFISERT'?'selected':''}>Kvalifisert</option></select>`:qualificationText(s.kvalifikasjon);
+    const staffing=s.redigerer?`<input type="number" min="1" step="1" value="${s.antallAnsatte}" onchange="setNumber('${o.id}','antallAnsatte',this.value)">`:`${s.antallAnsatte}`;
+    const critical=s.redigerer?`<div class="critical-editor"><input type="checkbox" ${s.kritiskAktiv?'checked':''} onchange="toggleCritical('${o.id}',this.checked)"><span>Kritisk</span>${s.kritiskAktiv?`<input type="time" value="${minutesToTime(s.kritiskStart)}" onchange="setTime('${o.id}','kritiskStart',this.value)"><span>–</span><input type="time" value="${minutesToTime(s.kritiskSlutt)}" onchange="setTime('${o.id}','kritiskSlutt',this.value)">`:''}</div>`:criticalText(s);
+    return `<tr class="${s.aktiv?'':'excluded'}"><td>${esc(o.navn)}</td><td>${esc(o.adresse)}</td><td>${duration}</td><td>${qualification}</td><td>${staffing}</td><td>${critical}</td><td><div class="task-actions"><button class="task-button" ${s.aktiv?'':'disabled'} onclick="toggleEdit('${o.id}')">${s.redigerer?'Ferdig':'Rediger'}</button><button class="task-button" onclick="toggleTask('${o.id}')">${s.aktiv?'Fjern':'Ta med'}</button></div></td></tr>`;
+  }).join('');
+  result.className='muted'; result.textContent='Trykk «Planlegg ruter» for å beregne denne runden.';
+}
+function setValue(id,field,value){taskState[roundSelect.value][id][field]=value;}
+function setNumber(id,field,value){taskState[roundSelect.value][id][field]=Number.parseInt(value,10);}
+function setTime(id,field,value){taskState[roundSelect.value][id][field]=timeToMinutes(value);}
+function toggleCritical(id,checked){
+  taskState[roundSelect.value][id].kritiskAktiv=checked; showRound();
+}
+function validTask(s){
+  if(!Number.isInteger(s.varighet)||s.varighet<1){alert('Varigheten må være minst 1 minutt.');return false;}
+  if(!Number.isInteger(s.antallAnsatte)||s.antallAnsatte<1){alert('Antall ansatte må være minst 1.');return false;}
+  if(s.kritiskAktiv&&s.kritiskStart>s.kritiskSlutt){alert('Kritisk start kan ikke være senere enn kritisk slutt.');return false;}
+  return true;
+}
+function toggleEdit(id){
+  const s=taskState[roundSelect.value][id];
+  if(s.redigerer&&!validTask(s))return;
+  s.redigerer=!s.redigerer; showRound();
+}
+function toggleTask(id){
+  const s=taskState[roundSelect.value][id];
+  s.aktiv=!s.aktiv; s.redigerer=false; showRound();
+}
+function resetAddForm(){
+  addForm.reset();
+  document.querySelector('#new-duration').value=30;
+  document.querySelector('#new-staffing').value=1;
+  document.querySelectorAll('.critical-new').forEach(element=>element.hidden=true);
+  addForm.hidden=true;
+  addButton.hidden=false;
+}
+function addTask(event){
+  event.preventDefault();
+  if(!addForm.reportValidity())return;
+  const critical=document.querySelector('#new-critical').checked;
+  const start=document.querySelector('#new-critical-start').value;
+  const end=document.querySelector('#new-critical-end').value;
+  if(critical&&(!start||!end)){alert('Fyll inn både start og slutt for kritisk tid.');return;}
+  if(critical&&timeToMinutes(start)>timeToMinutes(end)){alert('Kritisk start kan ikke være senere enn kritisk slutt.');return;}
+  const id=`NY-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  taskState[roundSelect.value][id]={
+    id,
+    ny:true,
+    navn:document.querySelector('#new-name').value.trim(),
+    adresse:document.querySelector('#new-address').value.trim(),
+    aktiv:true,
+    redigerer:false,
+    varighet:Number.parseInt(document.querySelector('#new-duration').value,10),
+    kvalifikasjon:document.querySelector('#new-qualification').value,
+    antallAnsatte:Number.parseInt(document.querySelector('#new-staffing').value,10),
+    kritiskAktiv:critical,
+    kritiskStart:critical?timeToMinutes(start):timeToMinutes(current().start),
+    kritiskSlutt:critical?timeToMinutes(end):timeToMinutes(current().slutt)
+  };
+  resetAddForm(); showRound();
+}
+async function plan(){
+  button.disabled=true;
+  result.className='muted'; result.textContent='Dette kan ta noen sekunder.';
+  try {
+    const oppdrag=Object.entries(taskState[roundSelect.value]).map(([id,s])=>({id,ny:Boolean(s.ny),navn:s.navn,adresse:s.adresse,lengdegrad:s.lengdegrad,breddegrad:s.breddegrad,aktiv:s.aktiv,varighet:s.varighet,kvalifikasjon:s.kvalifikasjon,antall_ansatte:s.antallAnsatte,kritisk_start:s.kritiskAktiv?s.kritiskStart:null,kritisk_slutt:s.kritiskAktiv?s.kritiskSlutt:null}));
+    const response=await fetch('/api/planlegg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runde:roundSelect.value,oppdrag})});
+    const answer=await response.json();
+    if(!response.ok) throw new Error(answer.feil||'Ukjent feil');
+    showRoutes(answer);
+  } catch(error) {
+    result.className='error'; result.textContent=error.message;
+  } finally { button.disabled=false; }
+}
+function showRoutes(answer){
+  result.className='routes';
+  result.innerHTML=answer.ruter.map(route=>`<article class="route"><h2>${esc(route.ansatt)}</h2><p class="muted">${esc(route.kvalifikasjon)}</p>${route.stopp.length?route.stopp.map((s,i)=>`<div class="stop"><strong>${i+1}. ${esc(s.navn)}</strong><p>${esc(s.adresse)}</p><p>${s.ankomst}–${s.avslutning} · kjøring ${s.kjoretid} min · besøk ${s.varighet} min</p>${s.antall_ansatte>1?`<p>Krever ${s.antall_ansatte} ansatte samtidig</p>`:''}${s.kritisk?`<p>Kritisk tidsvindu: ${s.kritisk}</p>`:''}${s.forsinkelse?`<p class="late">Forsinket ${s.forsinkelse} min</p>`:''}</div>`).join(''):'<p>Ingen tildelte oppdrag.</p>'}<p><strong>Tilbake depot: ${route.tilbake}</strong></p><p>Kjøring ${route.total_kjoretid} min · arbeidstid ${route.total_arbeidstid} min</p></article>`).join('');
+}
+roundSelect.addEventListener('change',()=>{resetAddForm();showRound();}); button.addEventListener('click',plan);
+addButton.addEventListener('click',()=>{addForm.hidden=false;addButton.hidden=true;});
+document.querySelector('#cancel-add').addEventListener('click',()=>{resetAddForm();addButton.hidden=false;});
+document.querySelector('#new-critical').addEventListener('change',event=>document.querySelectorAll('.critical-new').forEach(element=>element.hidden=!event.target.checked));
+addForm.addEventListener('submit',event=>{addTask(event);addButton.hidden=false;});
+// Når brukeren lukker fanen/vinduet med X, stoppes også Python-serveren.
+window.addEventListener('pagehide',()=>navigator.sendBeacon('/api/stopp',''));
+load().catch(error=>{result.className='error';result.textContent=error.message;});
+</script>
+</body>
+</html>
